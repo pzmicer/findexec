@@ -1,0 +1,1 @@
+This is CLI application for finding executables in specified directory
