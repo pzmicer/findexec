@@ -1,11 +1,8 @@
 use std::{fs::{self, DirEntry}, collections::{HashMap, VecDeque}, path::{PathBuf}};
 use std::os::linux::fs::MetadataExt;
-// use std::os::unix::fs::PermissionsExt;
-// use users::{Users, Groups, UserCache};
-// use serde_json::{Result, Value, json};
+use users::{get_user_by_uid};
 use serde::{Serialize, Deserialize};
 use clap::{Parser, ArgEnum};
-// use walkdir::{WalkDir, IntoIter};
 
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ArgEnum)]
@@ -14,7 +11,6 @@ enum OutputType {
 }
 
 
-/// Simple program to greet a person
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct FindexecArgs {
@@ -24,19 +20,9 @@ struct FindexecArgs {
     #[clap(short, long)]
     recursively: bool,
 
-    /// Exclude
+    /// Exclude files which contains specified string
     #[clap(long)]
     exclude: Option<String>,
-
-    ///Exclude directories starting with <EXCLUDE_DIRS>
-    #[clap(long)]
-    exclude_dirs: Option<String>,
-
-    #[clap(long)]
-    exclude_files: Option<String>,
-
-    #[clap(long)]
-    exclude_owner: Option<String>,
 
     #[clap(short, long, arg_enum)]
     output: Option<OutputType>,
@@ -47,6 +33,7 @@ struct Owner {
     uid: u32,
     name: String,
     files: Vec<PathBuf>,
+    size: u64,
 }
 
 fn list_dir(args: &FindexecArgs) -> Vec<DirEntry> {
@@ -85,58 +72,13 @@ fn list_dir(args: &FindexecArgs) -> Vec<DirEntry> {
     result
 }
 
-fn name_starts_with(str: &str, entry: &DirEntry) -> bool {
-    entry.file_name()
-        .to_str()
-        .map(|s| s.starts_with(str))
-        .unwrap_or(false)
-}
-
-fn is_dir(entry: &DirEntry) -> bool {
-    entry.metadata()
-        .unwrap()
-        .is_dir()
-}
-
 fn is_executable(entry: &DirEntry) -> bool {
     entry.metadata().unwrap().st_mode() & 0o100 != 0
 }
 
-fn to_json() -> String {
-    // JSON Serialization
-    let mut for_json: Vec<Owner> = Vec::new();
-    for (key, value) in &grouped_by_onwer {
-        let files: Vec<PathBuf> = value.iter().map(|&x| x.path()).collect();
-        for_json.push(Owner { 
-            uid: *key, 
-            name: String::new(), 
-            files: files,
-        });
-    }
-
-    for_json.sort_by(|a, b| b.files.len().cmp(&a.files.len()));
-
-    // println!("{}", serde_json::to_string(&for_json).unwrap());
-}
-
 fn main() {
-    println!("{:o}", fs::metadata("./src").unwrap().st_mode());
-    println!("{:o}", fs::metadata("./src/main.rs").unwrap().st_mode());
-    println!("{}", fs::metadata("./src/main.rs").unwrap().st_mode() & 0o100);
-    
-    // for entry in WalkDir::new("/etc").into_iter() {
-    //     println!("{}", entry.unwrap().path().display());
-    // }
-
    let app = FindexecArgs::parse();
-
-    println!("{}", app.target);
-
     let contents = list_dir(&app);
-
-    for file in &contents {
-        println!("{}", file.path().display());
-    }
 
     let mut grouped_by_onwer: HashMap<u32, Vec<&DirEntry>> = HashMap::new();
     
@@ -145,5 +87,40 @@ fn main() {
         grouped_by_onwer.entry(metadata.st_uid()).or_insert(Vec::new()).push(entry);
     }
     
-    
+    // Serialization
+
+    let mut owners: Vec<Owner> = Vec::new();
+    for (key, value) in &grouped_by_onwer {
+        let files: Vec<PathBuf> = value.iter().map(|&x| x.path()).collect();
+        let size = files.iter().map(|e| e.metadata().unwrap().st_size()).sum();
+
+        let owner = if let Some(owner) = get_user_by_uid(*key) {
+                owner
+        } else {
+            println!("Can't find user!");
+            continue
+        };
+
+        owners.push(Owner { 
+            uid: owner.uid(), 
+            name: owner.name().to_str().unwrap().to_owned(), 
+            files: files,
+            size: size,
+        });
+    }
+
+    owners.sort_by(|a, b| b.files.len().cmp(&a.files.len()));
+
+
+    if let Some(output) = app.output {
+        match output {
+            OutputType::JSON => {
+                println!("{}", serde_json::to_string(&owners).unwrap());
+            }
+        }
+    } else {
+        for owner in &owners {
+            println!("{}: {:?}", owner.uid, owner.files);
+        }
+    }
 }
