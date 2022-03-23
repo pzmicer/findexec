@@ -1,4 +1,4 @@
-use std::{fs::{self, DirEntry}, collections::{HashMap, VecDeque}, path::{PathBuf}};
+use std::{fs::{self, DirEntry, File}, collections::{HashMap, VecDeque}, path::{PathBuf}, io::Read};
 use std::os::linux::fs::MetadataExt;
 use users::{get_user_by_uid};
 use serde::{Serialize, Deserialize};
@@ -63,7 +63,7 @@ fn list_dir(args: &FindexecArgs) -> Vec<DirEntry> {
                 dirs.push_back(entry.path());
             }
 
-            if is_executable(&entry) && entry.path().is_file() {
+            if entry.path().is_file() && is_elf(entry.path()) { //is_executable(&entry)
                 result.push(entry);      
             }
         }
@@ -76,7 +76,29 @@ fn is_executable(entry: &DirEntry) -> bool {
     entry.metadata().unwrap().st_mode() & 0o100 != 0
 }
 
+fn is_elf(path: PathBuf) -> bool {
+    let mut file = File::open(path).unwrap();
+    let amount = 4;
+    let mut buffer = vec![0u8; amount as usize];
+    match file.read(&mut buffer) {
+        Ok(n) => {
+            if n < amount {
+                return false;
+            }
+        },
+        Err(e) => {
+            println!("{}", e);
+            return false;
+        }
+    }
+
+    // check ELF
+    &buffer[1..] == vec![0x45u8, 0x4cu8, 0x46u8]
+}
+
 fn main() {
+    is_elf(PathBuf::from("/bin/find"));
+
    let app = FindexecArgs::parse();
     let contents = list_dir(&app);
 
