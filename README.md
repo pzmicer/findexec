@@ -1,6 +1,7 @@
 ## About
 
-This CLI application lists ELF files in specified directory and groups them by user
+This CLI application lists ELF files in specified directory and groups them by user.
+Application was tested in WSL.
 
 
 ## Help
