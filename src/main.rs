@@ -39,6 +39,7 @@ struct Owner {
     uid: u32,
     username: String,
     files: Vec<PathBuf>,
+    amount: usize,
     size: u64,
 }
 
@@ -127,6 +128,7 @@ fn get_owners(contents: &Vec<DirEntry>) -> Vec<Owner> {
     for (key, value) in &grouped_by_onwer {
         let files: Vec<PathBuf> = value.iter().map(|&x| x.path()).collect();
         let size = files.iter().map(|e| e.metadata().unwrap().st_size()).sum();
+        let amount = files.len();
 
         let owner = match get_user_by_uid(*key) {
             Some(owner) => owner,
@@ -136,8 +138,9 @@ fn get_owners(contents: &Vec<DirEntry>) -> Vec<Owner> {
         owners.push(Owner { 
             uid: owner.uid(), 
             username: owner.name().to_str().unwrap().to_owned(), 
-            files: files,
-            size: size,
+            files,
+            amount,
+            size,
         });
     }
 
@@ -161,7 +164,7 @@ fn main() {
         }
     } else {
         for owner in &owners {
-            println!("{}: {:?}, size = {};", owner.username, owner.files, owner.size);
+            println!("{}: {:?}, amount = {}, size = {};", owner.username, owner.files, owner.amount, owner.size);
         }
     }
 }
